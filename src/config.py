@@ -13,3 +13,7 @@ class Config:
     train_bs = 128
     validation_pct = .2
     num_workers = 2
+    base_model = 'resnet18'  # seresnext26d_32x4d # efficientnet_b4 # seresnet152d # resnet34 resnet50
+    num_decoder_layers = 2
+    dropout_rate = .25
+    decoder_hidden_size = 128
