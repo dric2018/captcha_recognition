@@ -1,3 +1,12 @@
+# local files to ignore
+
+.vscode/
+.ipynb_checkpoints/
+data/*
+models/*
+logs/*
+
+
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]
