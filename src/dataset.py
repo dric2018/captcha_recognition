@@ -10,16 +10,18 @@ from PIL import Image
 from config import Config
 
 import pytorch_lightning as pl
+import tokenizer
 import logging
 
 logging.basicConfig(level=logging.INFO)
 
 
 class ImageDataset(Dataset):
-    def __init__(self, df, task='train'):
+    def __init__(self, df, tokenizer, task='train'):
         super(ImageDataset, self).__init__()
         self.df = df
         self.task = task
+        self.tokenizer = tokenizer
 
     def __len__(self):
         return len(self.df)
@@ -33,13 +35,16 @@ class ImageDataset(Dataset):
 
         if self.task == "train":
             label = self.df.iloc[index].image.split(".")[0]
-            sample.update({"label": label})
+            label = self.tokenizer.encode(text=label)['input_ids']
+
+            sample.update({"label": th.tensor(label, dtype=th.long)})
 
         return sample
 
 
 class DataModule(pl.LightningDataModule):
     def __init__(self,
+                 tokenizer,
                  df: pd.DataFrame,
                  val_size=Config.validation_pct,
                  test_bs=Config.test_bs,
@@ -49,13 +54,19 @@ class DataModule(pl.LightningDataModule):
         self.val_size = val_size
         self.train_bs = train_bs
         self.test_bs = test_bs
+        self.tokenizer = tokenizer
 
     def setup(self):
         self.val_df = self.df.reset_index(drop=True).sample(frac=self.val_size)
         self.train_df = self.df.drop(self.val_df.index)
 
-        self.train_ds = ImageDataset(df=self.train_df, task='train')
-        self.val_ds = ImageDataset(df=self.val_df, task='train')
+        self.train_ds = ImageDataset(df=self.train_df,
+                                     task='train',
+                                     tokenizer=self.tokenizer)
+
+        self.val_ds = ImageDataset(df=self.val_df,
+                                   task='train',
+                                   tokenizer=self.tokenizer)
         logging.info(
             msg=
             f"Training on {len(self.train_df)} and validating on {len(self.val_df)}"
@@ -79,10 +90,12 @@ class DataModule(pl.LightningDataModule):
 if __name__ == "__main__":
 
     df = pd.read_csv(os.path.join(Config.data_dir, 'Train.csv'))
-    dm = DataModule(df=df)
+    tokenizer = tokenizer.Tokenizer()
+    dm = DataModule(df=df, tokenizer=tokenizer)
     dm.setup()
 
     for data in dm.val_dataloader():
         images = data['img']
         labels = data['label']
         print(images.shape)
+        print(labels.shape)
