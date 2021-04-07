@@ -17,3 +17,13 @@ class Config:
     num_decoder_layers = 2
     dropout_rate = .25
     decoder_hidden_size = 128
+    optimizer = "adamw"
+    reduce_lr_on_plateau = False
+    lr = 3e-3
+    weight_decay = 0.001
+    eps = 1e-08
+    cooldown = 0
+    precision = 32
+    accumulate_grad_batches = 1
+    n_folds = None
+    stratified = False

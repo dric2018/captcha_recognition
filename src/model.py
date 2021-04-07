@@ -13,7 +13,7 @@ from torchvision import models
 
 from config import Config
 from dataset import DataModule
-
+import utils
 import logging
 
 logging.basicConfig(level=logging.INFO)
@@ -47,8 +47,59 @@ class Model(pl.LightningModule):
 
         self.fc = nn.Linear(in_features=hidden_size * 2, out_features=36 + 1)
 
+        self.loss_fn = LossFn()
+
     def configure_optimizers(self):
-        pass
+        params = [p for p in self.parameters() if p.requires_grad == True]
+
+        optims = {
+            "adam":
+            th.optim.Adam(lr=Config.lr,
+                          params=params,
+                          eps=Config.eps,
+                          weight_decay=Config.weight_decay),
+            "adamw":
+            th.optim.AdamW(lr=Config.lr,
+                           params=params,
+                           eps=Config.eps,
+                           weight_decay=Config.weight_decay),
+            "sgd":
+            th.optim.SGD(lr=Config.lr,
+                         params=params,
+                         weight_decay=Config.weight_decay),
+        }
+
+        opt = optims[Config.optimizer]
+
+        sc1 = th.optim.lr_scheduler.LambdaLR(optimizer=opt,
+                                             lr_lambda=utils.ramp_scheduler,
+                                             verbose=True)
+
+        sc2 = th.optim.lr_scheduler.ReduceLROnPlateau(
+            optimizer=opt,
+            mode='max',
+            factor=0.1,
+            patience=Config.reducing_lr_patience,
+            threshold=0.0001,
+            threshold_mode='rel',
+            cooldown=Config.cooldown,
+            min_lr=0,
+            eps=Config.eps,
+            verbose=True,
+        )
+
+        if Config.reduce_lr_on_plateau:
+            scheduler = sc2
+
+            return {
+                "optimizer": opt,
+                "lr_scheduler": scheduler,
+                "monitor": "val_loss"
+            }
+        else:
+            scheduler = sc1
+
+            return [opt], [scheduler]
 
     def forward(self, inputs, targets=None):
         print(f'[Model info] inputs {inputs.size()}')
@@ -74,7 +125,17 @@ class Model(pl.LightningModule):
     def validation_step(self, batch_idx):
         pass
 
-    def decode_prediction(self):
+    def decode_prediction(self, logits, lengths):
+        predictions = None
+
+        return predictions
+
+
+class LossFn(nn.CTCLoss):
+    def __init__(self):
+        super(LossFn, self).__init__()
+
+    def forward(self, input, target, input_lengths, target_lengths):
         pass
 
 
@@ -86,5 +147,5 @@ if __name__ == '__main__':
     for data in dm.val_dataloader():
         images = data['img']
         labels = data['label']
-        logits, lens, loss = model(inputs=images.cuda(), targets=None)
+        logits, lengths, loss = model(inputs=images.cuda(), targets=None)
         break
