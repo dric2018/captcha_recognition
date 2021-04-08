@@ -58,7 +58,7 @@ class Tokenizer:
     def decode(self, ids: Union[th.Tensor, List, np.array]):
         tokens = [
             self.get_token_from_id(id_)
-            if id_ != self.vocab[self.pad_token] else " " for id_ in ids
+            if id_ != self.vocab[self.pad_token] else "*" for id_ in ids
         ]
         text = "".join(tokens)
 

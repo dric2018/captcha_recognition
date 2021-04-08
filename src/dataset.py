@@ -31,7 +31,7 @@ class ImageDataset(Dataset):
         img_path = os.path.join(Config.data_dir, 'images', img_name)
         img = np.array(Image.open(fp=img_path)).transpose(2, 0, 1)
 
-        sample = {"img": th.from_numpy(img).float()}
+        sample = {"img": th.from_numpy(img / 255.0).float()}
 
         if self.task == "train":
             label = self.df.iloc[index].image.split(".")[0]

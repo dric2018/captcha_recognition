@@ -7,6 +7,8 @@ import torch.nn as nn
 import torch.nn.functional as F
 from torch.utils.data import DataLoader
 
+from PIL import Image
+
 import pytorch_lightning as pl
 from pytorch_lightning import seed_everything, Trainer
 
@@ -24,6 +26,7 @@ from tqdm.auto import tqdm
 from config import Config
 from dataset import ImageDataset
 import model
+import tokenizer
 
 import matplotlib.pyplot as plt
 import seaborn as sb
@@ -287,3 +290,98 @@ def save_experiment_conf():
             conf.write(f'{k} : {v}\n')
 
     return version
+
+
+def denormalize(img: th.tensor,
+                mean=[0.485, 0.456, 0.406],
+                std=[0.229, 0.224, 0.225]):
+    img = img.numpy().transpose((1, 2, 0))
+    #mean = np.array(mean)
+    #std = np.array(std)
+    #img = std * img + mean
+    img = np.clip(img, 0, 1)
+
+    return img
+
+
+def view_sample(dataset: ImageDataset = None,
+                images: th.Tensor = None,
+                labels: th.Tensor = None,
+                predictions: list = None,
+                size=5,
+                denorm=False,
+                return_image=False,
+                show=True):
+
+    assert (
+        labels.size(0) == len(predictions)
+    ), f"Targets and predictions should have the same lengths. Label lengths is {labels.size(0)} while predictions is {len(predictions)}"
+
+    tok = tokenizer.Tokenizer()
+
+    fig = plt.figure(figsize=(size * size, size * 3))
+
+    if images is not None:
+        for idx, data in enumerate(zip(images, labels, predictions)):
+            img, target, prediction = data[0], data[1], data[2]
+
+            if denorm:
+                img = denormalize(img)
+            else:
+                img = img.transpose(1, 0).transpose(2, 1)
+                img = np.clip(img, 0, 1)
+
+            label = tok.decode(ids=target)
+
+            ax = plt.subplot(size, size, idx + 1)
+
+            plt.imshow(img)
+            plt.title('label : ' + label, size=15)
+            # plt.axis("off")
+            plt.xlabel("prediction : " + prediction, size=15)
+            if idx == size**2 - 1:
+                if show:
+                    plt.show()
+
+                if return_image:
+                    buf = io.BytesIO()
+                    plt.savefig(buf, format='png', orientation='portrait')
+                    plt.close(fig)
+                    buf.seek(0)
+                    image = Image.open(buf)
+
+                    return image
+                break
+
+    else:
+        for idx, data in enumerate(dataset):
+            img, target = data['img'], data['label']
+            if denorm:
+                img = denormalize(img)
+            else:
+                img = img.transpose(1, 0).transpose(2, 1)
+                img = np.clip(img, 0, 1)
+
+            label = tok.decode(ids=target)
+
+            ax = plt.subplot(size, size, idx + 1)
+
+            plt.imshow(img)
+            plt.title('label : ' + label, size=15)
+            # plt.axis("off")
+            plt.xlabel("prediction : " + prediction, size=15)
+
+            if idx == size**2 - 1:
+                if show:
+                    plt.show()
+
+                if return_image:
+                    buf = io.BytesIO()
+                    plt.savefig(buf, format='png', orientation='portrait')
+                    plt.close(fig)
+                    buf.seek(0)
+                    image = Image.open(buf)
+
+                    return image
+
+                break

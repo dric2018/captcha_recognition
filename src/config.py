@@ -9,14 +9,14 @@ class Config:
     logs_dir = os.path.join(base_dir, 'logs')
     labels = list(
         "_ abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789")
-    img_H = 90
-    img_W = 282
+    img_H = 180  # 90
+    img_W = 300  # 282
     target_seq_len = 11
-    test_bs = 4
-    train_bs = 4
+    test_bs = 64  #32
+    train_bs = 64  #32
     validation_pct = .2
     num_workers = 2
-    base_model = 'efficientnet_b3'  # seresnext26d_32x4d # efficientnet_b4 # seresnet152d # resnet34 resnet50
+    base_model = 'resnet18'  # seresnext26d_32x4d # efficientnet_b3 # seresnet152d # resnet34 resnet50
     num_decoder_layers = 2
     dropout_rate = .25
     decoder_hidden_size = 64
