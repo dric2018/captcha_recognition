@@ -15,7 +15,7 @@ class Config:
     test_bs = 64  #32
     train_bs = 64  #32
     validation_pct = .2
-    num_workers = 2
+    num_workers = 3
     base_model = 'resnet18'  # seresnext26d_32x4d # efficientnet_b3 # seresnet152d # resnet34 resnet50
     num_decoder_layers = 2
     dropout_rate = .25
@@ -23,11 +23,14 @@ class Config:
     decoder_input_size = 128
     optimizer = "adamw"
     reduce_lr_on_plateau = False
+    num_epochs = 150
     lr = 3e-3
     weight_decay = 0.001
     eps = 1e-08
     cooldown = 0
     precision = 32
     accumulate_grad_batches = 1
+    early_stopping_patience = 20
+    reducing_lr_patience = 8
     n_folds = None
     stratified = False

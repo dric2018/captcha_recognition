@@ -30,13 +30,14 @@ class Model(pl.LightningModule):
                  bidirectional=True,
                  n_out_channels=256,
                  hidden_size=Config.decoder_hidden_size,
-                 transform=None,
                  pretrained=False,
                  model_name=Config.base_model):
         super(Model, self).__init__()
 
         self.tokenizer = Tokenizer()
-        self.transform = transform
+        self.transform = nn.Sequential(
+            transforms.Resize(size=(Config.img_H, Config.img_W)))
+
         self.n_out_channels = n_out_channels
         self.best_loss = np.inf
 
@@ -147,13 +148,19 @@ class Model(pl.LightningModule):
 
             return [opt], [scheduler]
 
-    def select_features(self, features: list, n_out_channels: int = 128):
-        features = [f for f in features if f.size(1) == n_out_channels]
-        return features[-1]
+    def select_features(self,
+                        features: list = None,
+                        n_out_channels: int = 128):
+
+        ft = None
+        for f in features:
+            if f.size(1) == n_out_channels:
+                ft = f
+
+        return ft
 
     def forward(self, inputs, targets=None):
-        if self.transform is not None:
-            inputs = self.transform(inputs)
+        inputs = self.transform(inputs)
         # print(f'[Model info] inputs {inputs.size()}')
         features = self.encoder(inputs)
         features = self.select_features(features=features,
@@ -203,9 +210,9 @@ class Model(pl.LightningModule):
 
         return log_probs, beam_results, out_lens, loss
 
-    def training_step(self, batch_idx, batch):
-        images = data['img']
-        targets = data['label']
+    def training_step(self, batch, batch_idx):
+        images = batch['img']
+        targets = batch['label']
         # forward pass + compute metrics
         log_probs, beam_results, out_lens, loss = self(inputs=images,
                                                        targets=targets)
@@ -222,13 +229,6 @@ class Model(pl.LightningModule):
 
         # logging phase
 
-        self.log("train_loss",
-                 value=loss,
-                 prog_bar=True,
-                 logger=True,
-                 on_step=True,
-                 on_epoch=True)
-
         self.log("train_acc",
                  value=train_acc,
                  prog_bar=True,
@@ -241,9 +241,9 @@ class Model(pl.LightningModule):
             "acc": train_acc,
         }
 
-    def validation_step(self, batch_idx):
-        images = data['img']
-        targets = data['label']
+    def validation_step(self, batch, batch_idx):
+        images = batch['img']
+        targets = batch['label']
         # forward pass + compute metrics
         log_probs, beam_results, out_lens, val_loss = self(inputs=images,
                                                            targets=targets)
@@ -275,10 +275,10 @@ class Model(pl.LightningModule):
 
         return {
             "loss": val_loss,
-            "val_acc": val_acc,
+            "accuracy": val_acc,
             "images": images,
             "targets": targets,
-            "predictions": predictions
+            "predictions": pred_texts
         }
 
     def validation_epoch_end(self, outputs):
@@ -289,16 +289,16 @@ class Model(pl.LightningModule):
         # acc
         avg_acc = th.stack([x['accuracy'] for x in outputs]).mean()
         # images
-        images = th.stack([x['images'] for x in outputs])
+        images = th.stack([x['images'] for x in outputs]).squeeze(dim=0)
         # targets
-        targets = th.stack([x['targets'] for x in outputs])
+        targets = th.stack([x['targets'] for x in outputs]).squeeze(dim=0)
         # predictions
-        predictions = th.stack([x['predictions'] for x in outputs])
+        predictions = [x['predictions'] for x in outputs][-1]
 
         # logging using tensorboard logger
 
-        grid = utils.view_sample(images=images,
-                                 labels=targets,
+        grid = utils.view_sample(images=images.cpu().detach(),
+                                 labels=targets.cpu().detach(),
                                  predictions=predictions,
                                  return_image=True,
                                  show=False)
@@ -385,10 +385,7 @@ if __name__ == '__main__':
     tokenizer = Tokenizer()
     dm = DataModule(df=df, tokenizer=tokenizer)
     dm.setup()
-    tfms = transforms.Compose([
-        transforms.Resize(size=(Config.img_H, Config.img_W)),
-    ])
-    model = Model(pretrained=True, transform=tfms).cuda()
+    model = Model(pretrained=True).cuda()
     # print(model)
 
     for batch_idx, data in enumerate(dm.val_dataloader()):

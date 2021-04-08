@@ -321,6 +321,8 @@ def view_sample(dataset: ImageDataset = None,
 
     fig = plt.figure(figsize=(size * size, size * 3))
 
+    images, labels = images.cpu(), labels.cpu()
+
     if images is not None:
         for idx, data in enumerate(zip(images, labels, predictions)):
             img, target, prediction = data[0], data[1], data[2]
