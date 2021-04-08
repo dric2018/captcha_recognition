@@ -5,6 +5,9 @@
 data/*
 models/*
 logs/*
+src/*.pt
+src/*.pth
+src/*.bin
 
 
 # Byte-compiled / optimized / DLL files
