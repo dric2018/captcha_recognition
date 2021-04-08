@@ -37,6 +37,12 @@ parser.add_argument(
     'Type of model architechture (present in timm package) to use, one of resnet18, efficientnet_b3 ect...'
 )
 
+parser.add_argument('--pretrained',
+                    '-pt',
+                    type=bool,
+                    default=False,
+                    help='Pretrained or not')
+
 if __name__ == '__main__':
     # set seed for repro
     _ = seed_everything(seed=Config.seed_val)
@@ -59,7 +65,7 @@ if __name__ == '__main__':
         # build model
         print('[INFO] Building model')
 
-        net = model.Model(pretrained=True)
+        net = model.Model(pretrained=args.pretrained)
 
         # config training pipeline
         print('[INFO] Callbacks and loggers configuration')
@@ -97,7 +103,7 @@ if __name__ == '__main__':
             logger=Logger,
             deterministic=True,
             accumulate_grad_batches=Config.accumulate_grad_batches,
-            fast_dev_run=True)
+            fast_dev_run=False)
 
         print(f'[INFO] Runing experiment N° {version}')
         # train/eval/save model(s)

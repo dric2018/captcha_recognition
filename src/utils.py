@@ -9,6 +9,8 @@ from torch.utils.data import DataLoader
 
 from PIL import Image
 
+from ctcdecode import CTCBeamDecoder
+
 import pytorch_lightning as pl
 from pytorch_lightning import seed_everything, Trainer
 
@@ -315,14 +317,12 @@ def view_sample(dataset: ImageDataset = None,
 
     assert (
         labels.size(0) == len(predictions)
-    ), f"Targets and predictions should have the same lengths. Label lengths is {labels.size(0)} while predictions is {len(predictions)}"
+    ), f"Targets and predictions should have the same lengths. Label length is {labels.size(0)} while predictions is {len(predictions)}"
 
     tok = tokenizer.Tokenizer()
 
     fig = plt.figure(figsize=(size * size, size * 3))
-
-    images, labels = images.cpu(), labels.cpu()
-
+    images, labels = images.cpu().detach(), labels.cpu().detach()
     if images is not None:
         for idx, data in enumerate(zip(images, labels, predictions)):
             img, target, prediction = data[0], data[1], data[2]
@@ -387,3 +387,18 @@ def view_sample(dataset: ImageDataset = None,
                     return image
 
                 break
+
+
+def decode_predictions(logits, seq_lengths):
+    predictions_decoder = CTCBeamDecoder(labels=Config.labels,
+                                         model_path=None,
+                                         alpha=0,
+                                         beta=0,
+                                         cutoff_top_n=40,
+                                         cutoff_prob=1.0,
+                                         beam_width=100,
+                                         num_processes=Config.num_workers,
+                                         blank_id=0,
+                                         log_probs_input=False)
+
+    return predictions_decoder.decode(probs=logits, seq_lens=seq_lengths)

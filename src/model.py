@@ -12,8 +12,7 @@ import pytorch_lightning as pl
 import timm
 from torchvision import models, transforms
 
-from ctcdecode import CTCBeamDecoder
-
+from typing import List, Union
 from config import Config
 from dataset import DataModule
 import utils
@@ -35,13 +34,14 @@ class Model(pl.LightningModule):
         super(Model, self).__init__()
 
         self.tokenizer = Tokenizer()
+        self.pretrained = pretrained
         self.transform = nn.Sequential(
             transforms.Resize(size=(Config.img_H, Config.img_W)))
 
         self.n_out_channels = n_out_channels
         self.best_loss = np.inf
 
-        if pretrained:
+        if self.pretrained:
             logging.info(
                 msg=f'Using {Config.base_model} as features extractor')
 
@@ -71,10 +71,10 @@ class Model(pl.LightningModule):
                 nn.Conv2d(in_channels=64, out_channels=128, kernel_size=2),
                 nn.MaxPool2d(kernel_size=(2, 2)),
                 nn.ELU(),
-                nn.Linear(in_features=69, out_features=32),
+                nn.Linear(in_features=73, out_features=32),
             )
 
-            self.decoder = nn.GRU(input_size=Config.decoder_input_size * 21,
+            self.decoder = nn.GRU(input_size=Config.decoder_input_size * 43,
                                   hidden_size=hidden_size,
                                   bidirectional=bidirectional,
                                   num_layers=num_layers,
@@ -83,18 +83,6 @@ class Model(pl.LightningModule):
 
         self.fc = nn.Linear(in_features=hidden_size * 2,
                             out_features=len(Config.labels))
-
-        self.predictions_decoder = CTCBeamDecoder(
-            labels=Config.labels,
-            model_path=None,
-            alpha=0,
-            beta=0,
-            cutoff_top_n=40,
-            cutoff_prob=1.0,
-            beam_width=100,
-            num_processes=Config.num_workers,
-            blank_id=0,
-            log_probs_input=False)
 
     def configure_optimizers(self):
         params = [p for p in self.parameters() if p.requires_grad == True]
@@ -127,7 +115,7 @@ class Model(pl.LightningModule):
             mode='max',
             factor=0.1,
             patience=Config.reducing_lr_patience,
-            threshold=0.0001,
+            threshold=0.001,
             threshold_mode='rel',
             cooldown=Config.cooldown,
             min_lr=0,
@@ -148,28 +136,28 @@ class Model(pl.LightningModule):
 
             return [opt], [scheduler]
 
-    def select_features(self,
-                        features: list = None,
-                        n_out_channels: int = 128):
-
-        ft = None
-        for f in features:
-            if f.size(1) == n_out_channels:
-                ft = f
-
-        return ft
-
     def forward(self, inputs, targets=None):
         inputs = self.transform(inputs)
         # print(f'[Model info] inputs {inputs.size()}')
-        features = self.encoder(inputs)
-        features = self.select_features(features=features,
-                                        n_out_channels=self.n_out_channels)
-        # print(f'[Model info] features {features.size()}')
+        if self.pretrained:
+            features = self.encoder(inputs)
+            for f in features:
+                if f.size(1) == self.n_out_channels:
+                    self.ftrs = f
 
-        n, c, h, w = features.size()
-        # reshape features for recurrence
-        features = features.view(n, c * h, w).permute(0, 2, 1)
+            # print(f'[Model info] features {features.size()}')
+
+            n, c, h, w = self.ftrs.size()
+            # reshape features for recurrence
+            features = self.ftrs.view(n, c * h, w).permute(0, 2, 1)
+        else:
+            features = self.encoder(inputs)
+
+            # print(f'[Model info] features {features.size()}')
+            n, c, h, w = features.size()
+            # reshape features for recurrence
+            features = features.view(n, c * h, w).permute(0, 2, 1)
+
         # print(f'[Model info] reshaped features {features.size()}')
 
         hidden_states, c = self.decoder(features)
@@ -198,12 +186,12 @@ class Model(pl.LightningModule):
                                  input_lengths=input_lengths,
                                  target_lengths=target_lengths)
 
-            beam_results, _, _, out_lens = self.decode_predictions(
+            beam_results, _, _, out_lens = utils.decode_predictions(
                 logits=logits.transpose(0, 1), seq_lengths=target_lengths)
         else:
             loss = None
 
-            beam_results, _, _, out_lens = self.decode_predictions(
+            beam_results, _, _, out_lens = utils.decode_predictions(
                 logits.transpose(0, 1), input_lengths)
 
         # print("[INFO] beam_results ", beam_results.shape)
@@ -238,8 +226,24 @@ class Model(pl.LightningModule):
 
         return {
             "loss": loss,
-            "acc": train_acc,
+            "accuracy": train_acc,
         }
+
+    def training_epoch_end(self, outputs):
+        #  the function is called after every epoch is completed
+
+        # calculating average loss
+        avg_loss = th.stack([x['loss'] for x in outputs]).mean()
+        # acc
+        avg_acc = th.stack([x['accuracy'] for x in outputs]).mean()
+
+        # logging using tensorboard logger
+
+        self.logger.experiment.add_scalar("Loss/Train", avg_loss,
+                                          self.current_epoch)
+
+        self.logger.experiment.add_scalar("Accuracy/Train", avg_acc,
+                                          self.current_epoch)
 
     def validation_step(self, batch, batch_idx):
         images = batch['img']
@@ -295,17 +299,19 @@ class Model(pl.LightningModule):
         # predictions
         predictions = [x['predictions'] for x in outputs][-1]
 
+        # print(images.size())
+        # print(targets.size())
         # logging using tensorboard logger
-
-        grid = utils.view_sample(images=images.cpu().detach(),
-                                 labels=targets.cpu().detach(),
+        grid = utils.view_sample(images=images[-1],
+                                 labels=targets[-1],
                                  predictions=predictions,
                                  return_image=True,
                                  show=False)
 
         self.logger.experiment.add_image(tag='predictions_grid',
                                          img_tensor=np.array(grid),
-                                         dataformats='HWC')
+                                         dataformats='HWC',
+                                         global_step=self.global_step)
 
         self.logger.experiment.add_scalar("Loss/Validation", avg_loss,
                                           self.current_epoch)
@@ -324,11 +330,6 @@ class Model(pl.LightningModule):
             print("\n")
             print('[INFO] validation loss did not improve')
             print()
-
-    def decode_predictions(self, logits, seq_lengths):
-
-        return self.predictions_decoder.decode(probs=logits,
-                                               seq_lens=seq_lengths)
 
     def get_loss(self, log_probs, targets, input_lengths, target_lengths):
 
